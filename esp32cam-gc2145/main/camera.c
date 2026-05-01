@@ -1,7 +1,7 @@
 #include "esp_log.h"
 #include "camera.h"
 
-// AI-Thinker ESP32-CAM pinmap (OV2640)
+// AI-Thinker ESP32-CAM pinmap (GC2145)
 #define CAM_PIN_PWDN     32
 #define CAM_PIN_RESET    -1  // tied to 3.3V on AI-Thinker, use software reset
 #define CAM_PIN_XCLK      0

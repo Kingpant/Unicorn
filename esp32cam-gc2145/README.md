@@ -1,7 +1,15 @@
-# ESP32-CAM HTTP Stream
+# ESP32-CAM GC2145 HTTP Stream
 
-WiFi camera stream using the AI-Thinker ESP32-CAM board and ESP-IDF.  
+WiFi camera stream using the AI-Thinker ESP32-CAM board with **GC2145 sensor** and ESP-IDF.  
 Exposes an MJPEG stream and JPEG snapshot over HTTP for image processing on a host PC.
+
+## Hardware
+
+| Item | Details |
+|------|---------|
+| Board | AI-Thinker ESP32-CAM |
+| Sensor | GC2145 (no hardware JPEG — software conversion via `frame2jpg()`) |
+| Flasher | USB-TTL adapter (CH340 / CP2102) |
 
 ## Endpoints
 
@@ -10,11 +18,23 @@ Exposes an MJPEG stream and JPEG snapshot over HTTP for image processing on a ho
 | `http://<IP>/stream` | MJPEG continuous stream |
 | `http://<IP>/capture` | Single JPEG snapshot |
 
+## Performance
+
+| Setting | Value |
+|---------|-------|
+| Resolution | QVGA (320×240) |
+| Frame rate | ~8 fps |
+| JPEG quality | 20 (software) |
+| Frame pacing | 120 ms between frames |
+
+> The GC2145 outputs raw RGB565 — the ESP32 CPU encodes every frame to JPEG in software.
+> This caps throughput at ~8 fps. For 30 fps VGA, swap to an **OV2640** module (same connector).
+
 ## Requirements
 
 - [ESP-IDF v5.0+](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/get-started/)
-- AI-Thinker ESP32-CAM board
-- USB-TTL adapter (CH340 / CP2102) for flashing
+- macOS with Homebrew (or Linux)
+- USB-TTL adapter for flashing
 
 ## Quick Start
 
@@ -46,6 +66,7 @@ export PATH="/opt/homebrew/opt/python@3.12/bin:$PATH"
 ### 4. Set WiFi credentials
 
 ```bash
+cd esp32cam-gc2145
 make config
 ```
 
@@ -79,7 +100,13 @@ make flash-monitor
 make flash-monitor PORT=/dev/tty.usbserial-XXXX
 ```
 
-The serial monitor will print the assigned IP address after boot.
+Watch the serial monitor for the assigned IP address:
+
+```
+I (xxxx) wifi: connected
+I (xxxx) esp_netif: sta ip: 192.168.x.x
+I (xxxx) http_server: HTTP server started on :80
+```
 
 To stop the monitor: press **Ctrl + ]**
 
@@ -89,16 +116,33 @@ To stop the monitor: press **Ctrl + ]**
 http://<IP>/stream
 ```
 
+Or open a snapshot:
+
+```
+http://<IP>/capture
+```
+
+## Finding Your USB Port
+
+Run the companion port server and open `device-finder.html` in Chrome:
+
+```bash
+make ports
+```
+
+Then open `../device-finder.html` directly in Chrome (not via Live Server — it causes unwanted reloads).
+
 ## Makefile Targets
 
 | Target | Description |
 |--------|-------------|
 | `make setup` | Pull `esp32-camera` component (run once) |
-| `make config` | Open menuconfig |
+| `make config` | Open menuconfig for WiFi credentials |
 | `make build` | Compile firmware |
 | `make flash` | Flash to board |
 | `make monitor` | Open serial monitor |
 | `make flash-monitor` | Flash then open monitor |
+| `make ports` | Start port helper server for device-finder.html |
 | `make all` | setup + build + flash-monitor |
 | `make clean` | Remove build artefacts |
 
@@ -126,12 +170,37 @@ Disconnect IO0 from GND after flashing and press reset to boot normally.
 esp32cam-gc2145/
 ├── Makefile
 ├── CMakeLists.txt
-├── sdkconfig.defaults      # PSRAM + partition config
+├── sdkconfig.defaults          # PSRAM + partition config
 └── main/
     ├── main.c
     ├── wifi.c / wifi.h
-    ├── camera.c / camera.h
-    ├── http_server.c / http_server.h
-    ├── Kconfig.projbuild   # WiFi SSID/password menu entries
-    └── idf_component.yml   # espressif/esp32-camera dependency
+    ├── camera.c / camera.h     # GC2145 init, RGB565, sensor tuning
+    ├── http_server.c / http_server.h  # MJPEG stream + JPEG snapshot
+    ├── Kconfig.projbuild       # WiFi SSID/password menu entries
+    └── idf_component.yml       # espressif/esp32-camera dependency
 ```
+
+## Sensor Settings (camera.c)
+
+The GC2145 is initialized with automatic image controls for better image quality:
+
+| Setting | Value |
+|---------|-------|
+| Auto white balance | Enabled |
+| Auto gain | Enabled |
+| Auto exposure | Enabled |
+| Brightness | +1 |
+| Contrast | +1 |
+| Saturation | 0 |
+| Flip / Mirror | Off |
+
+## Upgrading to OV2640
+
+Swap the camera module (same 24-pin FPC connector) and change two lines in `main/camera.c`:
+
+```c
+.pixel_format = PIXFORMAT_JPEG,   // hardware JPEG from sensor
+.frame_size   = FRAMESIZE_VGA,    // 640×480
+```
+
+No other code changes needed — `http_server.c` already handles hardware JPEG frames.
