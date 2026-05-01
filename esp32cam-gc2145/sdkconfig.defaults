@@ -10,3 +10,7 @@ CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y
 
 # Stack size for app_main
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
+
+# TCP buffers — default 5760 is smaller than one JPEG frame, causing EAGAIN on every send
+CONFIG_LWIP_TCP_SND_BUF_DEFAULT=32768
+CONFIG_LWIP_TCP_WND_DEFAULT=32768

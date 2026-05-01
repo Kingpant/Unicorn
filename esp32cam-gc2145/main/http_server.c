@@ -1,4 +1,5 @@
 #include <string.h>
+#include <errno.h>
 #include "esp_http_server.h"
 #include "esp_log.h"
 #include "esp_camera.h"
@@ -12,8 +13,8 @@
 #define STREAM_BOUNDARY     "\r\n--" PART_BOUNDARY "\r\n"
 #define STREAM_PART         "Content-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n"
 
-#define SW_JPEG_QUALITY 20   // quality for frame2jpg() software conversion (lower = faster + smaller)
-#define STREAM_FRAME_MS 120  // ~8 fps cap — gives WiFi send buffer time to drain
+#define SW_JPEG_QUALITY 20   // software JPEG quality
+#define STREAM_FRAME_MS 200  // ~5 fps — gives WiFi buffer time to drain between frames
 
 static const char *TAG = "http_server";
 
@@ -91,7 +92,6 @@ static esp_err_t stream_handler(httpd_req_t *req)
         }
 
         esp_err_t res = httpd_resp_send_chunk(req, STREAM_BOUNDARY, strlen(STREAM_BOUNDARY));
-
         if (res == ESP_OK) {
             size_t hlen = snprintf(part_buf, sizeof(part_buf), STREAM_PART, jpg_len);
             res = httpd_resp_send_chunk(req, part_buf, hlen);
@@ -100,12 +100,21 @@ static esp_err_t stream_handler(httpd_req_t *req)
             res = httpd_resp_send_chunk(req, (const char *)jpg_buf, jpg_len);
         }
 
+        // capture errno before free/fb_return can overwrite it
+        int send_errno = (res != ESP_OK) ? errno : 0;
+
         if (converted) free(jpg_buf);
         esp_camera_fb_return(fb);
 
-        if (res != ESP_OK) break;  // client disconnected
+        if (res != ESP_OK) {
+            if (send_errno == EAGAIN) {
+                vTaskDelay(pdMS_TO_TICKS(300));  // buffer full — drain then retry
+                continue;
+            }
+            break;  // real disconnect (ECONNRESET etc.)
+        }
 
-        vTaskDelay(pdMS_TO_TICKS(STREAM_FRAME_MS));  // pace frames to avoid EAGAIN
+        vTaskDelay(pdMS_TO_TICKS(STREAM_FRAME_MS));
     }
 
     return ESP_OK;
@@ -114,8 +123,8 @@ static esp_err_t stream_handler(httpd_req_t *req)
 esp_err_t http_server_start(void)
 {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port      = 80;
-    config.stack_size       = 8192;
+    config.server_port       = 80;
+    config.stack_size        = 8192;
     config.send_wait_timeout = 10;  // seconds before giving up on a slow client
 
     httpd_handle_t server = NULL;

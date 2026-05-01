@@ -41,10 +41,10 @@ Exposes an MJPEG stream and JPEG snapshot over HTTP for image processing on a ho
 ### 1. Install prerequisites (once)
 
 ```bash
-brew install cmake ninja dfu-util python@3.12
+brew install cmake ninja dfu-util
 ```
 
-> ESP-IDF v5 requires Python 3.10+. macOS ships with 3.9 — the above installs 3.12 via Homebrew.
+> ESP-IDF requires Python 3.10+. If your system Python is older, install a newer version via Homebrew.
 
 ### 2. Clone ESP-IDF (once)
 
@@ -59,7 +59,6 @@ git clone --recursive https://github.com/espressif/esp-idf.git
 
 ```bash
 cd ~/esp/esp-idf
-export PATH="/opt/homebrew/opt/python@3.12/bin:$PATH"
 ./install.sh esp32
 ```
 
