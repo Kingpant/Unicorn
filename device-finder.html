@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ESP32 Device Finder</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 48px 16px;
+    }
+
+    h1 { font-size: 1.6rem; font-weight: 700; margin-bottom: 6px; letter-spacing: -0.5px; }
+    .subtitle { font-size: 0.85rem; color: #64748b; margin-bottom: 28px; }
+
+    /* ── Tabs ── */
+    .tabs {
+      display: flex;
+      gap: 4px;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      padding: 4px;
+      margin-bottom: 32px;
+    }
+    .tab {
+      padding: 8px 22px;
+      border-radius: 7px;
+      border: none;
+      font-size: 0.875rem;
+      font-weight: 600;
+      cursor: pointer;
+      background: transparent;
+      color: #64748b;
+      transition: all 0.15s;
+    }
+    .tab.active { background: #3b82f6; color: #fff; }
+    .tab:not(.active):hover { color: #e2e8f0; }
+
+    /* ── Page sections ── */
+    .page { display: none; width: 100%; max-width: 560px; flex-direction: column; align-items: center; }
+    .page.active { display: flex; }
+
+    /* ── Buttons ── */
+    button { cursor: pointer; transition: opacity 0.15s; border: none; }
+    button:hover { opacity: 0.85; }
+
+    .actions { display: flex; gap: 10px; margin-bottom: 32px; }
+    .btn-primary  { padding: 10px 20px; border-radius: 8px; background: #3b82f6; color: #fff; font-size: 0.875rem; font-weight: 600; }
+    .btn-secondary { padding: 10px 20px; border-radius: 8px; background: #1e293b; color: #94a3b8; border: 1px solid #334155 !important; font-size: 0.875rem; font-weight: 600; }
+    .btn-danger   { padding: 6px 12px; border-radius: 6px; background: #450a0a; color: #fca5a5; border: 1px solid #7f1d1d !important; font-size: 0.75rem; font-weight: 500; }
+    .btn-ghost    { padding: 6px 12px; border-radius: 6px; background: #0f172a; color: #94a3b8; border: 1px solid #334155 !important; font-size: 0.75rem; font-weight: 500; }
+    .btn-ghost.copied { color: #2dd4bf; border-color: #2dd4bf !important; }
+
+    /* ── Device list ── */
+    .device-list { width: 100%; display: flex; flex-direction: column; gap: 12px; }
+
+    .empty { text-align: center; color: #475569; padding: 48px 0; font-size: 0.9rem; line-height: 1.8; }
+
+    .card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 18px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .card-left { display: flex; align-items: center; gap: 14px; }
+    .card-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+    .icon {
+      width: 40px; height: 40px; border-radius: 10px;
+      background: #0f172a; display: flex; align-items: center;
+      justify-content: center; font-size: 1.2rem; flex-shrink: 0;
+    }
+    .device-name { font-size: 0.95rem; font-weight: 600; color: #f1f5f9; margin-bottom: 3px; }
+    .device-port { font-size: 0.78rem; color: #64748b; font-family: "SF Mono", "Fira Code", monospace; }
+
+    .badge {
+      font-size: 0.7rem; font-weight: 600; padding: 2px 8px;
+      border-radius: 999px; background: #134e4a; color: #2dd4bf; margin-left: 8px;
+    }
+
+    /* ── Stream page ── */
+    .ip-row {
+      display: flex; gap: 8px; width: 100%; margin-bottom: 20px;
+    }
+    .ip-row input {
+      flex: 1; padding: 10px 14px; border-radius: 8px;
+      background: #1e293b; border: 1px solid #334155;
+      color: #f1f5f9; font-size: 0.9rem; font-family: "SF Mono", "Fira Code", monospace;
+      outline: none;
+    }
+    .ip-row input:focus { border-color: #3b82f6; }
+    .ip-row input::placeholder { color: #475569; }
+
+    .stream-status {
+      font-size: 0.8rem; color: #64748b;
+      margin-bottom: 20px; text-align: center;
+    }
+    .stream-status.ok  { color: #2dd4bf; }
+    .stream-status.err { color: #f87171; }
+
+    .stream-box {
+      width: 100%; border-radius: 12px; overflow: hidden;
+      background: #0f172a; border: 1px solid #334155;
+      display: none; flex-direction: column;
+    }
+    .stream-box.visible { display: flex; }
+
+    .stream-box img {
+      width: 100%; display: block;
+      background: #0f172a;
+    }
+
+    .stream-footer {
+      padding: 12px 16px; display: flex; gap: 8px;
+      border-top: 1px solid #1e293b; flex-wrap: wrap;
+    }
+
+    .auto-detect-btn {
+      padding: 10px 20px; border-radius: 8px;
+      background: #1e293b; color: #94a3b8;
+      border: 1px solid #334155 !important;
+      font-size: 0.875rem; font-weight: 600;
+    }
+
+    .not-supported {
+      background: #450a0a; border: 1px solid #7f1d1d; border-radius: 12px;
+      padding: 20px 24px; max-width: 560px; width: 100%;
+      font-size: 0.875rem; line-height: 1.7; color: #fca5a5;
+    }
+    .not-supported strong { color: #fecaca; }
+
+    /* ── Port inline inside card ── */
+    .port-inline {
+      display: flex; align-items: center; gap: 6px; margin-top: 5px;
+    }
+    .port-inline-label {
+      font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.06em; color: #475569;
+    }
+    .port-inline-path {
+      font-family: "SF Mono", "Fira Code", monospace;
+      font-size: 0.82rem; color: #2dd4bf;
+    }
+    .port-inline-missing {
+      margin-top: 5px; font-size: 0.75rem; color: #334155;
+    }
+    .port-inline-missing code {
+      background: #1e293b; padding: 1px 5px; border-radius: 4px; color: #64748b;
+    }
+
+    .hidden { display: none; }
+    .main-container { width: 100%; display: flex; flex-direction: column; align-items: center; }
+
+    .server-status {
+      font-size: 0.78rem; margin-bottom: 16px;
+      padding: 6px 12px; border-radius: 6px;
+    }
+    .server-status--off  { color: #64748b; background: #0f172a; }
+    .server-status--on   { color: #2dd4bf; background: #0f2a27; }
+    .server-status code  { background: #1e293b; padding: 1px 5px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+
+  <h1>ESP32 Device Finder</h1>
+  <p class="subtitle">USB serial devices connected to this computer</p>
+
+  <div id="no-support" class="not-supported hidden">
+    <strong>Web Serial API not supported.</strong><br>
+    Open this file in <strong>Chrome</strong> or <strong>Edge</strong> (version 89+).<br>
+    Safari and Firefox do not support Web Serial.
+  </div>
+
+  <div id="main" class="main-container hidden">
+
+    <!-- Tabs -->
+    <div class="tabs">
+      <button type="button" class="tab active" onclick="switchTab('devices')">Devices</button>
+      <button type="button" class="tab" onclick="switchTab('stream')">Stream</button>
+    </div>
+
+    <!-- ── Devices page ── -->
+    <div class="page active" id="page-devices">
+      <div class="actions">
+        <button type="button" class="btn-primary" onclick="addDevice()">+ Add Device</button>
+        <button type="button" class="btn-secondary" onclick="refresh()">Refresh</button>
+      </div>
+      <div id="serverStatus" class="server-status server-status--off">● Port server offline — run <code>make ports</code></div>
+
+      <!-- Port paths (hidden — path is shown inline on each card) -->
+      <div id="portPaths" class="hidden"></div>
+
+      <div class="device-list" id="deviceList">
+        <div class="empty">No devices found.<br>Click <strong>Add Device</strong> to select a serial port.</div>
+      </div>
+    </div>
+
+    <!-- ── Stream page ── -->
+    <div class="page" id="page-stream">
+      <div class="ip-row">
+        <input id="ipInput" type="text" placeholder="192.168.x.x" oninput="onIpInput()" />
+        <button type="button" class="btn-primary" onclick="connectStream()">Connect</button>
+        <button type="button" class="auto-detect-btn" onclick="autoDetectIp()" title="Read IP from serial monitor">Auto Detect</button>
+      </div>
+      <div class="stream-status" id="streamStatus">Enter the ESP32-CAM IP address printed in the serial monitor.</div>
+
+      <div class="stream-box" id="streamBox">
+        <img id="streamImg" src="" alt="MJPEG Stream" onerror="onStreamError()" onload="onStreamLoad()" />
+        <div class="stream-footer">
+          <button type="button" class="btn-primary" onclick="captureSnapshot()">📷 Snapshot</button>
+          <button type="button" class="btn-secondary" onclick="openInTab('stream')">Open Stream in Tab</button>
+          <button type="button" class="btn-secondary" onclick="openInTab('capture')">Open Capture in Tab</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    const VENDORS = { '1a86':'CH340', '10c4':'CP2102', '0403':'FT232', '239a':'Adafruit', '2341':'Arduino' };
+    const ESP_VIDS = [0x1a86, 0x10c4, 0x0403];
+
+    let ports = [];
+    let currentIp = '';
+    let autoReader = null;
+
+    // ── Tab switching ──────────────────────────────────────────────
+    function switchTab(tab) {
+      document.querySelectorAll('.tab').forEach((t, i) => {
+        t.classList.toggle('active', ['devices','stream'][i] === tab);
+      });
+      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+      document.getElementById(`page-${tab}`).classList.add('active');
+      sessionStorage.setItem('tab', tab);
+    }
+
+    // ── Devices page ───────────────────────────────────────────────
+    function guessLabel(info) {
+      const vid = (info.usbVendorId || 0).toString(16).toLowerCase().padStart(4, '0');
+      return VENDORS[vid] || 'USB Serial Adapter';
+    }
+
+    async function refresh() {
+      await fetchRealPaths();
+      ports = await navigator.serial.getPorts();
+      renderPaths();
+      render();
+    }
+
+    function renderPaths() {
+      const el = document.getElementById('portPaths');
+      if (realPaths.length === 0) {
+        el.innerHTML = `<div class="port-hint">No port server detected. Run <code>make ports</code> to see real port paths.</div>`;
+        return;
+      }
+      el.innerHTML = `
+        <div class="port-paths-title">Detected Ports</div>
+        ${realPaths.map((p, i) => {
+          const vid = p.vid ? p.vid.toString(16).toUpperCase().padStart(4,'0') : null;
+          const pid = p.pid ? p.pid.toString(16).toUpperCase().padStart(4,'0') : null;
+          const ids = [vid && `VID:${vid}`, pid && `PID:${pid}`].filter(Boolean).join('  ');
+          return `
+          <div class="port-row">
+            <div>
+              <span class="port-path">${p.path}</span>
+              ${ids ? `<span class="device-port" style="margin-left:10px;color:#475569">${ids}</span>` : ''}
+            </div>
+            <div class="card-actions">
+              <button type="button" class="btn-ghost" id="pcmd-${i}" onclick="copyPortCmd(${i},'${p.path}')">Copy make cmd</button>
+              <button type="button" class="btn-ghost" id="ppath-${i}" onclick="copyPortPath(${i},'${p.path}')">Copy path</button>
+            </div>
+          </div>`;
+        }).join('')}`;
+    }
+
+    function copyPortPath(i, path) {
+      navigator.clipboard.writeText(path).then(() => {
+        const btn = document.getElementById(`ppath-${i}`);
+        btn.textContent = 'Copied!';
+        btn.classList.add('copied');
+        setTimeout(() => { btn.textContent = 'Copy path'; btn.classList.remove('copied'); }, 1500);
+      });
+    }
+
+    function copyPortCmd(i, path) {
+      navigator.clipboard.writeText(`make flash-monitor PORT=${path}`).then(() => {
+        const btn = document.getElementById(`pcmd-${i}`);
+        btn.textContent = 'Copied!';
+        btn.classList.add('copied');
+        setTimeout(() => { btn.textContent = 'Copy make cmd'; btn.classList.remove('copied'); }, 1500);
+      });
+    }
+
+    async function addDevice() {
+      try {
+        await navigator.serial.requestPort();
+        await fetchRealPaths();
+        ports = await navigator.serial.getPorts();
+        renderPaths();
+        render();
+      } catch (e) {
+        if (e.name !== 'NotAllowedError') console.error(e);
+      }
+    }
+
+    async function removeDevice(i) {
+      const port = ports[i];
+      try {
+        if (port.forget) await port.forget();
+      } catch (_) {}
+      ports = await navigator.serial.getPorts();
+      render();
+    }
+
+    // Real port info from the local helper (python3 list-ports.py)
+    // Each entry: { path, vid, pid, desc }
+    let realPaths = [];
+    async function fetchRealPaths() {
+      const status = document.getElementById('serverStatus');
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 3000);
+        const res = await fetch('http://localhost:8765/ports', { signal: controller.signal });
+        clearTimeout(timer);
+        realPaths = await res.json();
+        status.textContent = `● Port server connected — ${realPaths.length} port${realPaths.length !== 1 ? 's' : ''} found`;
+        status.className = 'server-status server-status--on';
+      } catch (_) {
+        realPaths = [];
+        status.innerHTML = '● Port server offline — run <code>make ports</code>';
+        status.className = 'server-status server-status--off';
+      }
+    }
+
+    function matchPath(info, portIndex) {
+      if (!realPaths.length) return '';
+      // 1. Match by VID + PID
+      if (info.usbVendorId != null && info.usbProductId != null) {
+        const m = realPaths.find(p => p.vid === info.usbVendorId && p.pid === info.usbProductId);
+        if (m) return m.path;
+      }
+      // 2. Match by VID only
+      if (info.usbVendorId != null) {
+        const m = realPaths.find(p => p.vid === info.usbVendorId);
+        if (m) return m.path;
+      }
+      // 3. One server port + one web port → must be the same device
+      if (realPaths.length === 1 && ports.length === 1) return realPaths[0].path;
+      // 4. Index fallback (same order, different source)
+      if (realPaths[portIndex]) return realPaths[portIndex].path;
+      return '';
+    }
+
+    function makeCardHTML(i, label, ids, isEsp, path) {
+      const makeCmd = path ? `make flash-monitor PORT=${path}` : '';
+      const portRow = path
+        ? `<div class="port-inline">
+             <span class="port-inline-label">Port</span>
+             <span class="port-inline-path">${path}</span>
+           </div>`
+        : `<div class="port-inline-missing">Run <code>make ports</code> to detect port path</div>`;
+      return `
+        <div class="card-left">
+          <div class="icon">🔌</div>
+          <div>
+            <div class="device-name">
+              ${label}
+              ${isEsp ? '<span class="badge">ESP32-CAM</span>' : ''}
+            </div>
+            <div class="device-port">${ids || 'No ID info available'}</div>
+            ${portRow}
+          </div>
+        </div>
+        <div class="card-actions">
+          ${makeCmd ? `<button type="button" class="btn-ghost" id="cmd-${i}" onclick="copyCmd(${i},'${makeCmd}')">Copy make cmd</button>` : ''}
+          <button type="button" class="btn-ghost" id="copy-${i}" onclick="copyText(${i},'${ids}')">Copy IDs</button>
+          <button type="button" class="btn-danger" onclick="removeDevice(${i})">Remove</button>
+        </div>`;
+    }
+
+    function render() {
+      const list = document.getElementById('deviceList');
+      if (ports.length === 0) {
+        list.innerHTML = `<div class="empty">No devices found.<br>Click <strong>Add Device</strong> to select a serial port.</div>`;
+        return;
+      }
+
+      // Incremental update — only touch cards that changed
+      const existingCards = {};
+      list.querySelectorAll('.card[data-idx]').forEach(el => {
+        existingCards[el.dataset.idx] = el;
+      });
+
+      const newKeys = new Set();
+      ports.forEach((port, i) => {
+        const info = port.getInfo();
+        const label = guessLabel(info);
+        const vid = info.usbVendorId ? info.usbVendorId.toString(16).toUpperCase().padStart(4,'0') : null;
+        const pid = info.usbProductId ? info.usbProductId.toString(16).toUpperCase().padStart(4,'0') : null;
+        const ids = [vid && `VID:${vid}`, pid && `PID:${pid}`].filter(Boolean).join('  ');
+        const isEsp = ESP_VIDS.includes(info.usbVendorId);
+        const key = ids || `port-${i}`;
+        newKeys.add(key);
+
+        const path = matchPath(info, i);
+
+        if (existingCards[key]) {
+          // Update in place — no animation replay
+          existingCards[key].innerHTML = makeCardHTML(i, label, ids, isEsp, path);
+        } else {
+          const card = document.createElement('div');
+          card.className = 'card';
+          card.dataset.idx = key;
+          card.innerHTML = makeCardHTML(i, label, ids, isEsp, path);
+          list.appendChild(card);
+        }
+      });
+
+      // Remove stale cards
+      Object.entries(existingCards).forEach(([key, el]) => {
+        if (!newKeys.has(key)) el.remove();
+      });
+
+      // Remove empty state if present
+      const empty = list.querySelector('.empty');
+      if (empty) empty.remove();
+    }
+
+    function copyText(i, text) {
+      navigator.clipboard.writeText(text).then(() => {
+        const btn = document.getElementById(`copy-${i}`);
+        btn.textContent = 'Copied!';
+        btn.classList.add('copied');
+        setTimeout(() => { btn.textContent = 'Copy IDs'; btn.classList.remove('copied'); }, 1500);
+      });
+    }
+
+    function copyCmd(i, cmd) {
+      navigator.clipboard.writeText(cmd).then(() => {
+        const btn = document.getElementById(`cmd-${i}`);
+        btn.textContent = 'Copied!';
+        btn.classList.add('copied');
+        setTimeout(() => { btn.textContent = 'Copy make cmd'; btn.classList.remove('copied'); }, 1500);
+      });
+    }
+
+    // ── Stream page ────────────────────────────────────────────────
+    function onIpInput() {
+      // clear stream when IP changes
+      document.getElementById('streamBox').classList.remove('visible');
+      setStatus('', '');
+    }
+
+    function connectStream() {
+      const ip = document.getElementById('ipInput').value.trim();
+      if (!ip) { setStatus('Enter an IP address first — use Auto Detect or check the serial monitor.', 'err'); return; }
+      const ipValid = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(ip);
+      if (!ipValid) { setStatus(`"${ip}" doesn't look like a valid IP address.`, 'err'); return; }
+      currentIp = ip;
+      const img = document.getElementById('streamImg');
+      img.src = '';
+      document.getElementById('streamBox').classList.add('visible');
+      setStatus('Connecting…', '');
+      img.src = `http://${ip}/stream`;
+    }
+
+    function onStreamLoad() { setStatus(`Streaming from ${currentIp}`, 'ok'); }
+    function onStreamError() { setStatus(`Could not connect to http://${currentIp}/stream — check the IP and that the board is on the same WiFi.`, 'err'); }
+
+    function captureSnapshot() {
+      if (!currentIp) return;
+      window.open(`http://${currentIp}/capture`, '_blank');
+    }
+
+    function openInTab(endpoint) {
+      if (!currentIp) return;
+      window.open(`http://${currentIp}/${endpoint}`, '_blank');
+    }
+
+    function setStatus(msg, type) {
+      const el = document.getElementById('streamStatus');
+      el.textContent = msg;
+      el.className = 'stream-status' + (type ? ` ${type}` : '');
+    }
+
+    // Auto-detect IP by reading serial output from the board
+    async function autoDetectIp() {
+      let port;
+      try {
+        port = await navigator.serial.requestPort();
+        await port.open({ baudRate: 115200 });
+      } catch (e) {
+        if (e.name !== 'NotAllowedError') setStatus('Could not open serial port.', 'err');
+        return;
+      }
+
+      setStatus('Reading serial… waiting for IP address…', '');
+      const decoder = new TextDecoderStream();
+      port.readable.pipeTo(decoder.writable);
+      const reader = decoder.readable.getReader();
+      autoReader = reader;
+
+      let buf = '';
+      const ipPattern = /(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/;
+      const timeout = setTimeout(() => {
+        reader.cancel();
+        setStatus('Timed out — board did not print an IP within 15 seconds. Reset the board and try again.', 'err');
+      }, 15000);
+
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buf += value;
+          const match = buf.match(ipPattern);
+          if (match) {
+            clearTimeout(timeout);
+            const ip = match[1];
+            document.getElementById('ipInput').value = ip;
+            currentIp = ip;
+            setStatus(`IP detected: ${ip}`, 'ok');
+            reader.cancel();
+            break;
+          }
+        }
+      } catch (_) {}
+
+      try { await port.close(); } catch (_) {}
+    }
+
+    // ── Init ───────────────────────────────────────────────────────
+    if (!('serial' in navigator)) {
+      document.getElementById('no-support').classList.remove('hidden');
+    } else {
+      document.getElementById('main').classList.remove('hidden');
+      const savedTab = sessionStorage.getItem('tab');
+      if (savedTab) switchTab(savedTab);
+      refresh();
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+menu "ESP32-CAM Configuration"
+
+    config WIFI_SSID
+        string "WiFi SSID"
+        default "myssid"
+
+    config WIFI_PASSWORD
+        string "WiFi Password"
+        default "mypassword"
+
+    config WIFI_MAX_RETRY
+        int "Max WiFi retry count"
+        default 5
+
+endmenu
