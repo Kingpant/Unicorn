@@ -123,7 +123,7 @@ Disconnect IO0 from GND after flashing and press reset to boot normally.
 ## Project Structure
 
 ```
-cam/
+esp32cam-gc2145/
 ├── Makefile
 ├── CMakeLists.txt
 ├── sdkconfig.defaults      # PSRAM + partition config

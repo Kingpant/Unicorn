@@ -1,8 +1,8 @@
 # ESP-IDF build output
-cam/build/
-cam/sdkconfig
-cam/dependencies.lock
-cam/managed_components/
+esp32cam-gc2145/build/
+esp32cam-gc2145/sdkconfig
+esp32cam-gc2145/dependencies.lock
+esp32cam-gc2145/managed_components/
 
 # macOS
 .DS_Store
