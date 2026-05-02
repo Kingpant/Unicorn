@@ -1,0 +1,13 @@
+# downloaded datasets (can be re-downloaded with download.py)
+datasets/
+
+# Python virtual environment
+venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# macOS
+.DS_Store
