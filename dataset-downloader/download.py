@@ -96,7 +96,8 @@ def main():
 
             print(f"  [{key}] v{version}")
             try:
-                dest = str(OUT_DIR / ws_id / proj_id)
+                query_folder = query.strip().lower().replace(" ", "_")
+                dest = str(OUT_DIR / query_folder / ws_id / proj_id)
                 rf.workspace(ws_id).project(proj_id).version(version).download(
                     args.format, location=dest, overwrite=True
                 )
