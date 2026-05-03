@@ -35,13 +35,22 @@ def main():
                         help="Training device: mps, cpu, 0 (default: mps)")
     parser.add_argument("--workers", type=int, default=0,
                         help="Dataloader workers — 0 works best with MPS (default: 0)")
+    parser.add_argument("--resume", action="store_true",
+                        help="Resume from last checkpoint (runs/world_food/weights/last.pt)")
     args = parser.parse_args()
 
-    if not Path(args.data).exists():
-        print(f"ERROR: {args.data} not found — run prepare_dataset.py first")
-        return
-
-    model = YOLO(args.model)
+    if args.resume:
+        last = Path("runs/world_food/weights/last.pt")
+        if not last.exists():
+            print(f"ERROR: no checkpoint found at {last} — cannot resume")
+            return
+        print(f"Resuming from: {last}")
+        model = YOLO(str(last))
+    else:
+        if not Path(args.data).exists():
+            print(f"ERROR: {args.data} not found — run prepare_dataset.py first")
+            return
+        model = YOLO(args.model)
 
     cache = False if args.cache == "none" else args.cache
     print(f"Training {args.model} on {args.data}")
@@ -59,6 +68,7 @@ def main():
         project="runs",
         name="world_food",
         patience=args.patience,
+        resume=args.resume,
         save=True,
         plots=True,
         exist_ok=True,

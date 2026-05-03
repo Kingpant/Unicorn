@@ -79,6 +79,55 @@ python train.py --imgsz 640 --batch 16 --cache ram --device cpu --epochs 100
 
 Best weights saved to `runs/world_food/weights/best.pt`.
 
+### Reading training output
+
+Each epoch prints two lines — one while training, one after validation:
+
+**Training line:**
+```
+Epoch 9/50 | box_loss 1.098 | cls_loss 1.737 | dfl_loss 1.285
+```
+
+| Number | What it means | Want |
+|--------|--------------|------|
+| `9/50` | Finished epoch 9 out of 50 | Higher |
+| `box_loss` | How wrong the box position is — is the rectangle drawn in the right place? | Lower |
+| `cls_loss` | How wrong the food name is — saying "sushi" when it's "pad thai"? | Lower |
+| `dfl_loss` | How sloppy the box edges are — tight around food or loose? | Lower |
+
+All 3 losses dropping each epoch = model is learning normally.
+
+**Validation line:**
+```
+all | 1886 images | 3551 instances | P 0.576 | R 0.465 | mAP50 0.468 | mAP50-95 0.359
+```
+
+| Number | What it means | Want |
+|--------|--------------|------|
+| `P` (Precision) | When it says "this is food", how often it's correct | Higher |
+| `R` (Recall) | Out of all food in the photo, how much it found | Higher |
+| `mAP50` | **Main accuracy score** — 0 = useless, 1.0 = perfect | Higher |
+| `mAP50-95` | Stricter version — box must be very tight to count | Higher |
+
+**mAP50 progress guide:**
+
+| mAP50 | Meaning |
+|-------|---------|
+| 0.0 – 0.3 | Model is struggling |
+| 0.3 – 0.5 | Learning, getting useful |
+| 0.5 – 0.7 | Good, practical for real use |
+| 0.7+ | Excellent |
+
+A first run with many food classes typically reaches 0.55–0.65 by epoch 50.
+
+### If training crashes — resume
+
+```bash
+python train.py --resume
+```
+
+Picks up from `runs/world_food/weights/last.pt` (saved after every epoch). No need to repeat any flags.
+
 ## Step 4 — Export to CoreML (ANE)
 
 ```bash
