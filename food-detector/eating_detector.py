@@ -2,7 +2,7 @@
 """
 Eating detector using chest-mounted camera.
 
-Detects WHETHER you eat by tracking wrist trajectory with MediaPipe Hands:
+Detects WHETHER you eat by tracking wrist trajectory with YOLOv8 Pose:
   - Wrist moves DOWN into plate zone → reaching for food
   - Wrist moves UP and exits frame   → bringing food to mouth = eating event
 
@@ -22,16 +22,20 @@ from datetime import datetime
 from pathlib import Path
 
 import cv2
-import mediapipe as mp
 from ultralytics import YOLO
 
 # ── Zones (normalized 0–1, Y increases downward) ─────────────────────────────
 PLATE_ZONE_Y = 0.55   # wrist below this line = in plate zone
 EXIT_ZONE_Y  = 0.15   # wrist above this line = exiting toward mouth
 COOLDOWN_SEC = 3.0    # min seconds between logged eating events
+KP_CONF_MIN  = 0.3    # ignore wrist keypoints below this confidence
+
+# YOLOv8 COCO pose keypoint indices
+LEFT_WRIST  = 9
+RIGHT_WRIST = 10
 
 
-def build_model(model_path: str) -> YOLO:
+def build_food_model(model_path: str) -> YOLO:
     p = Path(model_path)
     if p.exists():
         print(f"Food model: {p}")
@@ -43,7 +47,7 @@ def build_model(model_path: str) -> YOLO:
 
 class EatingStateMachine:
     """
-    Tracks one hand's wrist trajectory:
+    Tracks one wrist's trajectory:
       IDLE → REACHING (wrist enters plate zone) → eating event (wrist exits top)
     """
     IDLE     = "idle"
@@ -70,7 +74,6 @@ class EatingStateMachine:
                     self.state = self.IDLE
                     return True
             elif wrist_y <= PLATE_ZONE_Y:
-                # returned to rest without reaching mouth
                 self.state = self.IDLE
 
         return False
@@ -112,16 +115,9 @@ def main():
                         help="CSV file to log eating events")
     args = parser.parse_args()
 
-    food_model = build_model(args.model)
-
-    mp_hands = mp.solutions.hands
-    mp_draw  = mp.solutions.drawing_utils
-    hands    = mp_hands.Hands(
-        static_image_mode=False,
-        max_num_hands=2,
-        min_detection_confidence=0.6,
-        min_tracking_confidence=0.5,
-    )
+    food_model = build_food_model(args.model)
+    # downloads yolov8n-pose.pt automatically on first run (~6 MB)
+    pose_model = YOLO("yolov8n-pose.pt")
 
     source = int(args.source) if args.source.isdigit() else args.source
     cap    = cv2.VideoCapture(source)
@@ -129,7 +125,7 @@ def main():
         print(f"ERROR: cannot open source: {args.source}")
         return
 
-    # one state machine per hand (index 0=left, 1=right)
+    # one state machine per wrist (index 0=left, 1=right)
     machines     = [EatingStateMachine(), EatingStateMachine()]
     last_food    = None
     food_refresh = 0.0
@@ -151,37 +147,46 @@ def main():
                 break
 
             h, w = frame.shape[:2]
-            rgb  = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-            # refresh food label every 1.5 s
+            # refresh food label every 1.5 s to save CPU
             now = time.time()
             if now - food_refresh > 1.5:
                 last_food    = detect_food(food_model, frame)
                 food_refresh = now
 
-            result = hands.process(rgb)
+            # ── Pose: detect wrists ───────────────────────────────────────────
+            pose_results   = pose_model(frame, verbose=False, conf=0.4)
+            wrist_detected = [False, False]
             ate_this_frame = False
 
-            if result.multi_hand_landmarks:
-                for hand_lm, hand_info in zip(result.multi_hand_landmarks,
-                                               result.multi_handedness):
-                    label    = hand_info.classification[0].label  # "Left"/"Right"
-                    hand_idx = 0 if label == "Left" else 1
+            for r in pose_results:
+                if r.keypoints is None or r.keypoints.xy is None:
+                    continue
+                kps  = r.keypoints.xy    # (num_persons, 17, 2) pixel coords
+                conf = r.keypoints.conf  # (num_persons, 17)
 
-                    mp_draw.draw_landmarks(frame, hand_lm,
-                                           mp_hands.HAND_CONNECTIONS)
+                for person in range(len(kps)):
+                    for wrist_kp, machine_idx in [(LEFT_WRIST, 0), (RIGHT_WRIST, 1)]:
+                        kp_conf = float(conf[person][wrist_kp])
+                        if kp_conf < KP_CONF_MIN:
+                            continue
 
-                    wrist_y = hand_lm.landmark[mp_hands.HandLandmark.WRIST].y
-                    wx = int(hand_lm.landmark[mp_hands.HandLandmark.WRIST].x * w)
-                    wy = int(wrist_y * h)
-                    cv2.circle(frame, (wx, wy), 8, (255, 255, 0), -1)
+                        px = float(kps[person][wrist_kp][0])
+                        py = float(kps[person][wrist_kp][1])
+                        wrist_y_norm = py / h
 
-                    if machines[hand_idx].update(wrist_y):
-                        ate_this_frame = True
-            else:
-                for m in machines:
-                    m.state = EatingStateMachine.IDLE
+                        wrist_detected[machine_idx] = True
+                        cv2.circle(frame, (int(px), int(py)), 8, (255, 255, 0), -1)
 
+                        if machines[machine_idx].update(wrist_y_norm):
+                            ate_this_frame = True
+
+            # reset state machines for wrists not seen this frame
+            for i, seen in enumerate(wrist_detected):
+                if not seen:
+                    machines[i].update(None)
+
+            # ── Log eating event ──────────────────────────────────────────────
             if ate_this_frame:
                 flash_frames = 15
                 ts   = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -190,6 +195,7 @@ def main():
                 writer.writerow([ts, food, ""])
                 log_file.flush()
 
+            # ── Overlay ───────────────────────────────────────────────────────
             draw_zones(frame)
 
             if flash_frames > 0:
@@ -211,7 +217,6 @@ def main():
     finally:
         cap.release()
         cv2.destroyAllWindows()
-        hands.close()
         log_file.close()
         print(f"\nLog saved to: {log_path.resolve()}")
 

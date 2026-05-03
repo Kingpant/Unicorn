@@ -5,3 +5,5 @@ runs/
 merged_dataset/
 *.mlpackage
 *.mlmodel
+*.pt
+eating_log.csv
