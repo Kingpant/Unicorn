@@ -18,16 +18,19 @@ Usage:
 import argparse
 import csv
 import time
+from collections import Counter, deque
 from datetime import datetime
 from pathlib import Path
 
 import cv2
 from ultralytics import YOLO
 
+HERE = Path(__file__).parent  # always food-detector/ regardless of cwd
+
 # ── Zones (normalized 0–1, Y increases downward) ─────────────────────────────
 PLATE_ZONE_Y = 0.55   # wrist below this line = in plate zone
 EXIT_ZONE_Y  = 0.15   # wrist above this line = exiting toward mouth
-COOLDOWN_SEC = 3.0    # min seconds between logged eating events
+COOLDOWN_SEC = 1.5    # min seconds between logged eating events
 KP_CONF_MIN  = 0.3    # ignore wrist keypoints below this confidence
 
 # YOLOv8 COCO pose keypoint indices
@@ -79,18 +82,35 @@ class EatingStateMachine:
         return False
 
 
-def detect_food(model: YOLO, frame) -> str | None:
-    """Run food detection, return highest-confidence label or None."""
-    results = model(frame, verbose=False, conf=0.35)
+def detect_food(model: YOLO, frame) -> tuple[str | None, list]:
+    """Run food detection, return (best_label, list of box dicts for drawing)."""
+    results = model(frame, verbose=False, conf=0.20)
     best_label = None
     best_conf  = 0.0
+    boxes = []
     for r in results:
         for box in r.boxes:
-            conf = float(box.conf[0])
+            conf  = float(box.conf[0])
+            label = r.names[int(box.cls[0])]
+            x1, y1, x2, y2 = map(int, box.xyxy[0])
+            boxes.append({"x1": x1, "y1": y1, "x2": x2, "y2": y2,
+                          "label": label, "conf": conf})
             if conf > best_conf:
                 best_conf  = conf
-                best_label = r.names[int(box.cls[0])]
-    return best_label
+                best_label = label
+    return best_label, boxes
+
+
+def draw_food_boxes(frame, boxes: list):
+    """Redraw the last known food boxes onto the current frame."""
+    for b in boxes:
+        cv2.rectangle(frame, (b["x1"], b["y1"]), (b["x2"], b["y2"]), (0, 255, 255), 2)
+        text = f"{b['label']} {b['conf']:.0%}"
+        (tw, th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.55, 1)
+        cv2.rectangle(frame, (b["x1"], b["y1"] - th - 6),
+                      (b["x1"] + tw + 4, b["y1"]), (0, 255, 255), -1)
+        cv2.putText(frame, text, (b["x1"] + 2, b["y1"] - 4),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 0), 1)
 
 
 def draw_zones(frame):
@@ -109,9 +129,9 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--source", default="0",
                         help="Camera: 0=webcam, or ESP32-CAM stream URL")
-    parser.add_argument("--model", default="runs/world_food/weights/best.pt",
+    parser.add_argument("--model", default=str(HERE / "runs/world_food/weights/best.pt"),
                         help="YOLOv8 food model weights")
-    parser.add_argument("--log", default="eating_log.csv",
+    parser.add_argument("--log", default=str(HERE / "eating_log.csv"),
                         help="CSV file to log eating events")
     args = parser.parse_args()
 
@@ -127,7 +147,9 @@ def main():
 
     # one state machine per wrist (index 0=left, 1=right)
     machines     = [EatingStateMachine(), EatingStateMachine()]
+    food_votes   = deque(maxlen=5)  # last 5 detections — pick most common
     last_food    = None
+    last_boxes   = []               # redrawn every frame so boxes stay visible
     food_refresh = 0.0
     flash_frames = 0
 
@@ -151,8 +173,15 @@ def main():
             # refresh food label every 1.5 s to save CPU
             now = time.time()
             if now - food_refresh > 1.5:
-                last_food    = detect_food(food_model, frame)
+                detected, boxes = detect_food(food_model, frame)
+                if detected:
+                    food_votes.append(detected)
+                    last_boxes = boxes
+                if food_votes:
+                    last_food = Counter(food_votes).most_common(1)[0][0]
                 food_refresh = now
+
+            draw_food_boxes(frame, last_boxes)
 
             # ── Pose: detect wrists ───────────────────────────────────────────
             pose_results   = pose_model(frame, verbose=False, conf=0.4)
