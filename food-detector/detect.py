@@ -18,10 +18,12 @@ from pathlib import Path
 
 from ultralytics import YOLO
 
+HERE = Path(__file__).parent  # always food-detector/ regardless of cwd
+
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", default="runs/world_food/weights/best.mlpackage",
+    parser.add_argument("--model", default=str(HERE / "runs/world_food/weights/best.mlpackage"),
                         help="Path to CoreML .mlpackage model")
     parser.add_argument("--source", default="0",
                         help="Image path, folder, video path, or 0 for webcam")
@@ -69,6 +71,9 @@ def main():
         show=show,
         save=args.save,
         stream=True,
+        project=str(HERE / "runs" / "detect"),
+        name="predict",
+        exist_ok=True,
     )
 
     for result in results:

@@ -16,10 +16,12 @@ from pathlib import Path
 
 from ultralytics import YOLO
 
+HERE = Path(__file__).parent  # always food-detector/ regardless of cwd
+
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", default="runs/world_food/weights/best.pt",
+    parser.add_argument("--model", default=str(HERE / "runs/world_food/weights/best.pt"),
                         help="Path to trained .pt model")
     parser.add_argument("--imgsz", type=int, default=640)
     parser.add_argument("--int8", action="store_true",

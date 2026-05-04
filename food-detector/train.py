@@ -16,12 +16,14 @@ from pathlib import Path
 
 from ultralytics import YOLO
 
+HERE = Path(__file__).parent  # always food-detector/ regardless of cwd
+
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", default="yolov8n.pt",
                         help="Base weights: yolov8n/s/m/l/x.pt (default: yolov8n.pt — fastest)")
-    parser.add_argument("--data", default="merged_dataset/data.yaml",
+    parser.add_argument("--data", default=str(HERE / "merged_dataset/data.yaml"),
                         help="Path to merged data.yaml")
     parser.add_argument("--epochs", type=int, default=100)
     parser.add_argument("--imgsz", type=int, default=640)
@@ -40,7 +42,7 @@ def main():
     args = parser.parse_args()
 
     if args.resume:
-        last = Path("runs/world_food/weights/last.pt")
+        last = HERE / "runs/world_food/weights/last.pt"
         if not last.exists():
             print(f"ERROR: no checkpoint found at {last} — cannot resume")
             return
@@ -65,7 +67,7 @@ def main():
         device=args.device,
         workers=args.workers,
         cache=cache,
-        project="runs",
+        project=str(HERE / "runs"),
         name="world_food",
         patience=args.patience,
         resume=args.resume,
@@ -74,7 +76,7 @@ def main():
         exist_ok=True,
     )
 
-    best = Path("runs/world_food/weights/best.pt")
+    best = HERE / "runs/world_food/weights/best.pt"
     if best.exists():
         print(f"\nDone! Best model saved to: {best}")
         print("Next step: python export_coreml.py")
